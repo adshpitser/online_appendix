@@ -1,4 +1,4 @@
-# Загрузка библиотек
+# Загрузка библиотек и данных
 library(haven)
 library(dplyr)
 library(stringr)
@@ -17,7 +17,8 @@ library(tidyr)
 library(gridExtra)
 
 # Настройка формата чисел (чтобы без "e" было)
-options(scipen = 999) 
+options(scipen = 999)
+
 # Данные индивидуального опросника и опросника домохозяйств
 r28i_os_32 <- read_sav("r28i_os_32.sav")
 r28h_os32 <- read_sav("r28h_os32.sav")
@@ -26,17 +27,19 @@ houshold=r28h_os32%>%select (xa3, x_nfm, xf14, XID_H)
 # Замена пропусков (ответы "не помню"/"не знаю") на Na, ограничение выборки по возрасту
 r28i_os_32=r28i_os_32%>% filter(x_age >= 18)
 r28i_os_32=r28i_os_32%>% filter((xh5==1 & x_age <= 70) |(xh5==2 & x_age <= 78))
+
 houshold[houshold==99999999 | houshold==99999998 | houshold==99999997   ] <- NA
 houshold$indinc=houshold$xf14/houshold$x_nfm
-r28i_os_32[r28i_os_32==99999999 | r28i_os_32==99999998 | r28i_os_32==99999997   ] <- NA
 
-# Объединение двух датасетов
+r28i_os_32[r28i_os_32==99999999 | r28i_os_32==99999998 | r28i_os_32==99999997   ] <- NA
 houshold$xid_h=houshold$XID_H
+
+# Объединение индивидуального опросника и по домох-вам
 r=merge.data.frame(r28i_os_32, houshold, by = 'xid_h')
+
 # Выбираем переменные для дальнейшего анализа
 r=r%>%select(idind, status, x_marst, region, xj324, x_diplom, x_age, xh5, xj1, xj1.1.1, xj1.1.2,xj1.1.3,xj1.1.4,xj13.2, xj60, xj73, xj77,  xj85, xj90,  xm1, xm2, xm43, xm46, xm58.1, xm59, xm62, xm131, xm71, xm72, xm75, xm77,xm78,xm79, xm80.0, xm80, xm114, xj6.2, xj60.5a,xj19, xm2.1, xl20, indinc)
-
-## Cоздание, перекодирование и преобразования переменных 
+# Cоздание, перекодирование и преобразования переменных 
 
 # ИМТ
 r$bmi=r$xm1/((r$xm2/100)^2)
@@ -122,9 +125,7 @@ r=r%>%
     labour_status=case_when(
       is_working==1 ~ 1,
       is_pension==1 ~ 2,
-      is_working==0 ~ 0) # Трудовой статус
-    
-  )
+      is_working==0 ~ 0) )# Трудовой статус
 
 # Курение, считаем кол-во пачка лет
 r$packs_per_day=(r$xm75)/20
@@ -169,15 +170,30 @@ data=data %>%tidyr::drop_na(ph_activity)
 data=data %>%tidyr::drop_na(educ)
 data=data %>%tidyr::drop_na(xj77)
 data=data %>%tidyr::drop_na(mar_status)
-# Удаляю переменные с пропусками по доходу
 data$inc2= ifelse((is.na(data$indinc) & (data$stroke==1 | data$heart_attack==1)), data$xj60, data$indinc )
+# Пропуски по доходу 
 data=data %>%tidyr::drop_na(inc2)
+# Удаляем странные значения по доходу
+data=data%>%filter(inc2!=0 & inc2<1000000)
+# Объединяем дефцит ИМТ и норму
+data=data%>%mutate(bmi_cat=case_when(
+  weight_status==1 | weight_status==2 ~ 0,
+  weight_status==3  ~ 2,
+  weight_status==4 ~ 3))
+# Описательная статистика данных 
+table1(~ x_age+factor(educ) + factor(mar_status) + factor(labour_status)+ inc2 + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ bmi+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event)+ factor(stroke) + factor(heart_attack) |factor(sex) , data=data)
 
-# Описательная статистика до чистки выбросов 
-table1(~ x_age+factor(educ) + factor(mar_status) + factor(labour_status)+ inc2 + factor(region1) + factor(city) + factor(smoker)+ pack_years2  + factor(ph_activity)+ bmi+ factor(weight_status) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event)+ factor(stroke) + factor(heart_attack) |factor(sex) , data=data)
+# По мужчинам
+male=data%>%filter(sex==0)
+table1(~factor(educ) + factor(mar_status) + factor(labour_status) + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event) |factor(stroke) , data=male)
+table1(~factor(educ) + factor(mar_status) + factor(labour_status) + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event) |factor(heart_attack) , data=male)
+# По женщинам 
+female=data%>%filter(sex==1)
+table1(~factor(educ) + factor(mar_status) + factor(labour_status) + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event) |factor(stroke) , data=female)
+table1(~factor(educ) + factor(mar_status) + factor(labour_status) + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event) |factor(heart_attack) , data=female)
 
 # Оставляем только нужные переменные
-w=data%>%select(idind, x_age, educ, mar_status, region1, labour_status, is_working,indinc, xj60,inc2, city, smoker, pack_years2 , ph_activity, bmi, weight_status, alcohol_intake, diabetes, hypertension, depression, stress_event, stroke,  heart_attack, sex)
+data_clean=data%>%select(idind, x_age, educ, mar_status, region1, labour_status, is_working,inc2, city, smoker,  ph_activity, bmi, bmi_cat, alcohol_intake, diabetes, hypertension, depression, stress_event, stroke,  heart_attack, sex)
 
-# Переходим в Стату !
-write.dta(w, file = "data1.dta")
+# Переходим в Стату !)
+write.dta(data_clean, file = "data_clean.dta")
