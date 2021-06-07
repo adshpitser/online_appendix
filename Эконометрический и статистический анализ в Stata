@@ -1,41 +1,7 @@
 * Загрузка преобразованных в Rstudio данных 
-use "/Users/adelyashpitser/Downloads/wf.dta", clear
+use "/Users/adelyashpitser/data_clean.dta", clear
 
-* Пролублируем переменную доход 
-gen wage=inc2
-
-* Видим, что много выбросов даже после логарифмирования
-gen lnwage=log(wage)
-graph box lnwage
-hist lnwage
-* Удаляем выбросы: по 1.5 %
-centile wage, centile (1.5 98.5)
-drop if (wage <r(c_1) & wage != .)| (wage >r(c_2) & wage != .)
-* Смотрим еще раз на боксплот, все ок
-gen log_wage =log(wage)
-graph box log_wage
-graph box wage
-* Распределение стало менее "размазанным" 
-hist log_wage
-
-* Сохраняем данные, очищенные от выбросов, для того, чтобы построить удобные описательные статистики и графики в Rstudio
-save "/Users/adelyashpitser/Desktop/data_removed_outliers.dta"
-
-* Регрессии
-logistic stroke x_age i0.educ i0.mar_status ib1.labour_status i1.region1  log_wage ib1.city ib1.smoker ib1.ph_activity bmi ib2.alcohol_intake i1.diabetes i1.hypertension i1.depression i1.stress_event if sex==0, vce(robust) cformat(%9.4f)
-estimates store m1, title(Model 1)
-
-logistic stroke x_age i0.educ i0.mar_status ib1.labour_status i1.region1  log_wage ib1.city ib1.smoker ib1.ph_activity bmi ib2.alcohol_intake i1.diabetes i1.hypertension i1.depression i1.stress_event if sex==1, vce(robust) cformat(%9.4f)
-estimates store m2, title(Model 2)
-
-logistic heart_attack x_age i0.educ i0.mar_status ib1.labour_status i1.region1  log_wage ib1.city ib1.smoker ib1.ph_activity bmi ib2.alcohol_intake i1.diabetes i1.hypertension i1.depression i1.stress_event if sex==0, vce(robust) cformat(%9.4f)
-estimates store m3, title(Model 3)
-
-logistic heart_attack x_age i0.educ i0.mar_status ib1.labour_status i1.region1  log_wage ib1.city ib1.smoker ib1.ph_activity bmi ib2.alcohol_intake i1.diabetes i1.hypertension i1.depression i1.stress_event if sex==1, vce(robust) cformat(%9.4f)
-estimates store m4, title(Model 4)
-
-* Таблица результатов, с коэффициентами в виде отношения шансов
-esttab m1 m2 m3 m4  using results.rtf , se star(* .10 ** .05 *** .01) eform 
+gen log_wage= log(inc2)
 
 * Статистические тесты 
 ** Для проверки стат. разницы между М и Ж
@@ -47,7 +13,7 @@ tab sex region1, chi2
 tab sex city, chi2
 tab sex smoker, chi2
 tab sex ph_activity, chi2
-tab sex weight_status, chi2
+tab sex bmi_cat, chi2
 tab sex alcohol_intake, chi2
 tab sex diabetes, chi2
 tab sex hypertension, chi2
@@ -57,50 +23,102 @@ tab sex stroke, chi2
 tab sex heart_attack, chi2
 *** Т-тест
 ttest log_wage, by(sex)
-ttest wage, by(sex)
+ttest inc2, by(sex)
 ttest x_age, by(sex)
 ttest bmi, by(sex)
-ttest pack_years2, by(sex)
 
-** Для проверки разницы между подгруппами больных и здоровых
-* Для инсульта (сравниваются 2 группы: ответившие "да", о наличии заболевания, и "нет")
-tab stroke sex, chi2
-tab stroke educ, chi2
-tab stroke mar_status, chi2
-tab stroke labour_status, chi2
-tab stroke city, chi2
-tab stroke smoker, chi2
-tab stroke ph_activity, chi2
-tab stroke weight_status, chi2
-tab stroke alcohol_intake, chi2
-tab stroke diabetes, chi2
-tab stroke hypertension, chi2
-tab stroke depression, chi2
-tab stroke stress_event, chi2
+* Мужчины
+** инсульт
+tab stroke educ if sex==0, chi2
+tab stroke mar_status if sex==0, chi2
+tab stroke labour_status if sex==0, chi2
+tab stroke region1 if sex==0, chi2
+tab stroke city if sex==0, chi2
+tab stroke smoker if sex==0, chi2
+tab stroke ph_activity if sex==0, chi2
+tab stroke bmi_cat if sex==0, chi2
+tab stroke alcohol_intake if sex==0, chi2
+tab stroke diabetes if sex==0, chi2
+tab stroke hypertension if sex==0, chi2
+tab stroke depression if sex==0, chi2
+tab stroke stress_event if sex==0, chi2
+** инфаркт
+tab heart_attack educ if sex==0, chi2
+tab heart_attack mar_status if sex==0, chi2
+tab heart_attack labour_status if sex==0, chi2
+tab heart_attack region1 if sex==0, chi2
+tab heart_attack city if sex==0, chi2
+tab heart_attack smoker if sex==0, chi2
+tab heart_attack ph_activity if sex==0, chi2
+tab heart_attack bmi_cat if sex==0, chi2
+tab heart_attack alcohol_intake if sex==0, chi2
+tab heart_attack diabetes if sex==0, chi2
+tab heart_attack hypertension if sex==0, chi2
+tab heart_attack depression if sex==0, chi2
+tab heart_attack stress_event if sex==0, chi2
 
-ttest log_wage, by(stroke)
-ttest wage, by(stroke)
-ttest x_age, by(stroke)
-ttest pack_years2, by(stroke)
-ttest bmi, by(stroke)
+estpost ttest x_age inc2 log_wage bmi  if sex==0, by(stroke) 
+esttab using ttestmalestroke.rtf, star(* .10 ** .05 *** .01)  wide
 
-* Для инфаркта миокарда (сравниваются 2 группы: ответившие "да", о наличии заболевания, и "нет")
-tab heart_attack sex, chi2
-tab heart_attack educ, chi2
-tab heart_attack mar_status, chi2
-tab heart_attack labour_status, chi2
-tab heart_attack city, chi2
-tab heart_attack smoker, chi2
-tab heart_attack ph_activity, chi2
-tab heart_attack weight_status, chi2
-tab heart_attack alcohol_intake, chi2
-tab heart_attack diabetes, chi2
-tab heart_attack hypertension, chi2
-tab heart_attack depression, chi2
-tab heart_attack stress_event, chi2
+estpost ttest x_age inc2 log_wage bmi  if sex==0, by(heart_attack) 
+esttab using ttestmaleheart_attack.rtf, star(* .10 ** .05 *** .01)  wide
 
-ttest log_wage, by(heart_attack)
-ttest wage, by(heart_attack)
-ttest x_age, by(heart_attack)
-ttest pack_years2, by(heart_attack)
-ttest bmi, by(heart_attack)
+
+* Женщины
+** инсульт
+tab educ stroke if sex==1, chi2 
+tab stroke educ if sex==1, chi2
+tab stroke mar_status if sex==1, chi2
+tab stroke labour_status if sex==1, chi2
+tab stroke region1 if sex==1, chi2
+tab stroke city if sex==1, chi2
+tab stroke smoker if sex==1, chi2
+tab stroke ph_activity if sex==1, chi2
+tab stroke bmi_cat if sex==1, chi2
+tab stroke alcohol_intake if sex==1, chi2
+tab stroke diabetes if sex==1, chi2
+tab stroke hypertension if sex==1, chi2
+tab stroke depression if sex==1, chi2
+tab stroke stress_event if sex==1, chi2
+** инфаркт
+tab heart_attack educ if sex==1, chi2
+tab heart_attack mar_status if sex==1, chi2
+tab heart_attack labour_status if sex==1, chi2
+tab heart_attack region1 if sex==1, chi2
+tab heart_attack city if sex==1, chi2
+tab heart_attack smoker if sex==1, chi2
+tab heart_attack ph_activity if sex==1, chi2
+tab heart_attack bmi_cat if sex==1, chi2
+tab heart_attack alcohol_intake if sex==1, chi2
+tab heart_attack diabetes if sex==1, chi2
+tab heart_attack hypertension if sex==1, chi2
+tab heart_attack depression if sex==1, chi2
+tab heart_attack stress_event if sex==1, chi2
+
+estpost ttest x_age inc2 log_wage bmi if sex==1, by(stroke) 
+esttab using ttestFemalestroke.rtf, star(* .10 ** .05 *** .01)  wide
+
+estpost ttest x_age inc2 log_wage bmi  if sex==1, by(heart_attack) 
+esttab using ttestFemaleheart_attack.rtf, star(* .10 ** .05 *** .01)  wide
+
+* Регрессии
+
+logistic stroke x_age i0.educ i0.mar_status ib1.labour_status i0.region1  log_wage i0.city i1.smoker ib2.ph_activity ib0.bmi_cat ib0.alcohol_intake i1.diabetes i1.hypertension i1.depression i1.stress_event if sex==0, vce(robust) cformat(%9.4f)
+estimates store ms, title(Model 1)
+vif, uncentered
+
+logistic stroke x_age i0.educ i0.mar_status ib1.labour_status i0.region1  log_wage i0.city i1.smoker ib2.ph_activity ib0.bmi_cat ib0.alcohol_intake i1.diabetes i1.hypertension i1.depression i1.stress_event if sex==1, vce(robust) cformat(%9.4f)
+estimates store mha, title(Model 2)
+vif, uncentered
+
+logistic heart_attack x_age i0.educ i0.mar_status ib1.labour_status i0.region1 log_wage i0.city i1.smoker ib2.ph_activity ib0.bmi_cat ib0.alcohol_intake i1.diabetes i1.hypertension i1.depression i1.stress_event if sex==0, vce(robust) cformat(%9.4f)
+estimates store fs, title(Model 3)
+vif, uncentered
+
+logistic heart_attack x_age i0.educ i0.mar_status ib1.labour_status i0.region1 log_wage i0.city i1.smoker ib2.ph_activity ib0.bmi_cat ib0.alcohol_intake i1.diabetes i1.hypertension i1.depression i1.stress_event if sex==1, vce(robust) cformat(%9.4f)
+estimates store fha, title(Model 4)
+vif, uncentered
+
+* Таблица результатов, с коэффициентами в виде отношения шансов
+esttab ms mha fs fha  using results.rtf , se star(* .10 ** .05 *** .01) eform 
+
