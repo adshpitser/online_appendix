@@ -1,0 +1,199 @@
+# Загрузка библиотек и данных
+library(haven)
+library(dplyr)
+library(stringr)
+library(knitr)
+library(ggplot2) 
+library(haven)
+library(devtools)
+library(foreign)
+library(grid)
+library(vcd)
+library(readr)
+library(table1)
+library(naniar)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+
+# Настройка формата чисел (чтобы без "e" было)
+options(scipen = 999)
+
+# Данные индивидуального опросника и опросника домохозяйств
+r28i_os_32 <- read_sav("r28i_os_32.sav")
+r28h_os32 <- read_sav("r28h_os32.sav")
+houshold=r28h_os32%>%select (xa3, x_nfm, xf14, XID_H)
+
+# Замена пропусков (ответы "не помню"/"не знаю") на Na, ограничение выборки по возрасту
+r28i_os_32=r28i_os_32%>% filter(x_age >= 18)
+r28i_os_32=r28i_os_32%>% filter((xh5==1 & x_age <= 70) |(xh5==2 & x_age <= 78))
+
+houshold[houshold==99999999 | houshold==99999998 | houshold==99999997   ] <- NA
+houshold$indinc=houshold$xf14/houshold$x_nfm
+
+r28i_os_32[r28i_os_32==99999999 | r28i_os_32==99999998 | r28i_os_32==99999997   ] <- NA
+houshold$xid_h=houshold$XID_H
+
+# Объединение индивидуального опросника и по домох-вам
+r=merge.data.frame(r28i_os_32, houshold, by = 'xid_h')
+
+# Выбираем переменные для дальнейшего анализа
+r=r%>%select(idind, status, x_marst, region, xj324, x_diplom, x_age, xh5, xj1, xj1.1.1, xj1.1.2,xj1.1.3,xj1.1.4,xj13.2, xj60, xj73, xj77,  xj85, xj90,  xm1, xm2, xm43, xm46, xm58.1, xm59, xm62, xm131, xm71, xm72, xm75, xm77,xm78,xm79, xm80.0, xm80, xm114, xj6.2, xj60.5a,xj19, xm2.1, xl20, indinc)
+# Cоздание, перекодирование и преобразования переменных 
+
+# ИМТ
+r$bmi=r$xm1/((r$xm2/100)^2)
+
+# Семейный статус, образование, пол, активность, категория ИМТ, курение, инсульт, инфаркт
+r=r%>%
+  mutate(
+    mar_status= case_when(    
+      x_marst==2 | x_marst==2 | xj324 <= 2 ~ 1,
+      x_marst==1 | x_marst>=4 | xj324==3 ~ 0), # Семейный статус
+    educ= case_when(
+      x_diplom<6  ~ 0,
+      x_diplom==6  ~ 1), # Образование,
+    sex= case_when(
+      xh5== 1 ~ 0,
+      xh5== 2  ~ 1), # Пол
+    ph_activity=case_when(
+      xm114== 1 |xm114== 2 |xm114== 3 ~ 2,
+      xm114== 6 |xm114== 5 | xm114== 4 ~ 3,
+      xm114== 99999995 ~ 1), # Физическая активность
+    weight_status=case_when(
+      bmi>=18.5 & bmi<=24.9 ~ 2,
+      bmi>24.9 & bmi <30  ~ 3,
+      bmi<18.5 ~ 1,
+      bmi>=30 ~ 4), # Интерпретация ИМТ
+    smoker=case_when(
+      xm71==1 | xm78==0  ~ 1,
+      xm77==2 | xm78>0 ~ 0 ), # Курение (если на xm77 ответил да, и бросил менее года назад)
+    stroke=case_when(
+      xm59==2 ~ 0,
+      xm59==1 ~ 1), # Инсульт
+    heart_attack=case_when(
+      xm46==2 ~ 0,
+      xm46==1 ~ 1), # Инфаркт миокарда
+    diabetes=case_when(
+      xm43==2 ~ 0,
+      xm43==1 ~ 1), # Диабет
+    hypertension=case_when(
+      xm58.1==2 ~ 0,
+      xm58.1==1 ~ 1), # Гипертония
+    depression=case_when(
+      xm131==2 ~ 0,
+      xm131==1 ~ 1), # Симптомы депрессии
+    region1= case_when(
+      region==142 |region==138 |region==141 |region==140 ~ 1, # Мск и область, СПБ
+      T~ 0), 
+    city=case_when(
+      status>=2 ~ 0,
+      status==1 ~ 1), # 1- городская # 0- сельская
+    is_working=case_when(
+      xj77==1 ~ 1, # переменные is_working & is_pension нужны для создания трудового статуса
+      xj77== 2 ~ 0 ),
+    is_pension=case_when(
+      xj90==4 ~ 1,
+      xj90!=4 ~ 0 ),
+    s1= case_when(
+      xj60.5a==5 ~ 1, #s1..s4 - переменные о наличии того или иного стрессового события
+      xj60.5a<5 ~ 0),
+    s2= case_when(
+      xj19==1 ~ 1,
+      xj19==2 ~ 0),
+    s3= case_when(
+      xm2.1==1 | xm2.1==2 ~ 1,
+      xm2.1==3 ~ 0),
+    s4= case_when(
+      xl20==1 ~ 1,
+      xl20==2 ~ 0)  
+  )
+
+# Складываем кол-во стрессовых ситуаций
+r$s1=as.integer(r$s1)
+r$s2=as.integer(r$s2)
+r$s3=as.integer(r$s3)
+r$s4=as.integer(r$s4)
+r$stress=apply(r[c('s1', 's2', 's3', 's4')],1,sum,na.rm=T)
+
+# Добавляем стресс и трудовй статус
+r=r%>%
+  mutate(
+    stress_event=case_when(
+      stress<2~ 0,
+      stress>=2 ~ 1), # Риск - две и больше ситуации
+    labour_status=case_when(
+      is_working==1 ~ 1,
+      is_pension==1 ~ 2,
+      is_working==0 ~ 0) )# Трудовой статус
+
+# Курение, считаем кол-во пачка лет
+r$packs_per_day=(r$xm75)/20
+r$smoke_exper72=r$x_age-r$xm72
+r$smoke_exper79=r$x_age-r$xm79
+
+# Долгие манипуляции т.к. инф-ия раскидана по разным переменным
+r=r%>%mutate(smoke_exper=ifelse(!is.na(smoke_exper72), smoke_exper72 , smoke_exper79))
+r=r%>%mutate(p_yearss= smoke_exper*packs_per_day )
+r=r%>%mutate(pack_years=ifelse(smoker==1, p_yearss , NA))
+r$pack_years2= ifelse(r$smoker==1, r$pack_years, 
+                      ifelse(r$smoker==0, 0,
+                             NA))
+
+# Алкоголь, сделаем небольшой датасет со всеми нужными переменными 
+alcohol=r28i_os_32%>%select(idind,x_age,xh5, xm80.0, xm80, xm84111d, xm84112d, xm84.12d, xm84.8d, xm84.21d, xm84.31d, xm84.4d, xm84.5d, xm84.9d, xm84.7d, xm84.6d)
+
+# Cчитаем сколько раз в месяц всех видов алкоголя выпито
+alcohol$total_consumtion_per_month=apply(alcohol[c('xm84111d', 'xm84112d', 'xm84.12d', 'xm84.8d', 'xm84.21d', 'xm84.31d', 'xm84.4d', 'xm84.5d', 'xm84.9d', 'xm84.7d', 'xm84.6d')],1,sum,na.rm=T)
+# Получаем частотность в неделю
+alcohol$consumtion_week=(alcohol$total_consumtion_per_month/30)*7
+
+# Происоединяю к основному датасету
+alcohol=alcohol%>%select( idind,total_consumtion_per_month, consumtion_week)
+data=r%>%left_join(alcohol, by='idind')
+
+# Делаем категории: 0 - не пьет, 1 - умеренно, 2 - злоупотребление
+data=data%>%
+  mutate(alcohol_intake=case_when(
+    ((xm80.0==1 & xm80==2) | xm80.0==2) | consumtion_week ==0  ~ 0,
+    consumtion_week < 4 & consumtion_week>=0 ~ 1,
+    consumtion_week >= 4  ~ 2,
+  ))
+
+# Удаляем переменные с пропусками (поэтапно, чтобы за раз не удалить слишком много)
+data=data %>%tidyr::drop_na(hypertension)
+data=data %>%tidyr::drop_na(bmi)
+data=data %>%tidyr::drop_na(depression)
+data=data %>%tidyr::drop_na(diabetes)
+data=data %>%tidyr::drop_na(smoker)
+data=data %>%tidyr::drop_na(ph_activity)
+data=data %>%tidyr::drop_na(educ)
+data=data %>%tidyr::drop_na(xj77)
+data=data %>%tidyr::drop_na(mar_status)
+data$inc2= ifelse((is.na(data$indinc) & (data$stroke==1 | data$heart_attack==1)), data$xj60, data$indinc )
+# Пропуски по доходу 
+data=data %>%tidyr::drop_na(inc2)
+# Удаляем странные значения по доходу
+data=data%>%filter(inc2!=0 & inc2<1000000)
+# Объединяем дефцит ИМТ и норму
+data=data%>%mutate(bmi_cat=case_when(
+  weight_status==1 | weight_status==2 ~ 0,
+  weight_status==3  ~ 2,
+  weight_status==4 ~ 3))
+# Описательная статистика данных 
+table1(~ x_age+factor(educ) + factor(mar_status) + factor(labour_status)+ inc2 + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ bmi+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event)+ factor(stroke) + factor(heart_attack) |factor(sex) , data=data)
+
+# По мужчинам
+male=data%>%filter(sex==0)
+table1(~factor(educ) + factor(mar_status) + factor(labour_status) + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event) |factor(stroke) , data=male)
+table1(~factor(educ) + factor(mar_status) + factor(labour_status) + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event) |factor(heart_attack) , data=male)
+# По женщинам 
+female=data%>%filter(sex==1)
+table1(~factor(educ) + factor(mar_status) + factor(labour_status) + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event) |factor(stroke) , data=female)
+table1(~factor(educ) + factor(mar_status) + factor(labour_status) + factor(region1) + factor(city) + factor(smoker) + factor(ph_activity)+ factor(bmi_cat) +factor(alcohol_intake)+ factor(diabetes)+ factor(hypertension) + factor(depression) + factor(stress_event) |factor(heart_attack) , data=female)
+
+# Оставляем только нужные переменные
+data_clean=data%>%select(idind, x_age, educ, mar_status, region1, labour_status, is_working,inc2, city, smoker,  ph_activity, bmi, bmi_cat, alcohol_intake, diabetes, hypertension, depression, stress_event, stroke,  heart_attack, sex)
+
+# Переходим в Стату!)
+write.dta(data_clean, file = "data_clean.dta")
